@@ -1,69 +1,88 @@
-# Project Steps
 
-1. **Install Azure CLI and kubectl**  
-   First, you need to install the Azure CLI and kubectl et docker engine in order to interact with Azure and your Kubernetes clusterand create image for ansible and terraform
+# Azure Kubernetes Cluster Setup with GitOps Workflow
 
-2. **Create cluster using Terraform**
-   Terraform requires a Service Principal to deploy resources on Azure. We use this Service Principal to authenticate and authorize Terraform actions.
-    To create the Service Principal, log in to the Azure CLI and run the following command:
+## Overview
+This guide outlines the steps to set up an Azure Kubernetes Service (AKS) cluster using Terraform, implement GitOps practices with ArgoCD, and deploy Splunk instances. The process involves using various tools and technologies to create a robust, scalable, and manageable Kubernetes environment.
 
-   ```bash
-   az ad sp create-for-rbac --name terraformSP --role contributor --scopes /subscriptions/<subscription_id>
+## Prerequisites
+- Azure subscription
+- GitHub account
+- Basic knowledge of Kubernetes, Terraform, and Ansible
 
-   We use to create a cluster AKS with many options like autoscaling to deploy a Kubernetes cluster on Azure that is configured to autoscale based on resource demand.
- Note : modif the content .envexa;ple with your information and change name to .env
+## Steps
 
-3. **Connect to cluster**
-   Connect to account azure by : az login --use-device-code
+### 1. Install Required Tools
+Install the following tools on your local machine:
+- Azure CLI
+- kubectl
+- Docker Engine
 
-   Set the cluster subscription : az account set --subscription <your subscribtion id>
+These tools are essential for interacting with Azure, managing your Kubernetes cluster, and creating images for Ansible and Terraform.
 
-   Download cluster credentials : az aks get-credentials --resource-group <resource groupe name> --name <cluster AKS name> --overwrite-existing
+### 2. Create AKS Cluster using Terraform
+Terraform requires a Service Principal to deploy resources on Azure. Follow these steps:
+- **a. Create a Service Principal:**
+  ```bash
+  az ad sp create-for-rbac --name terraformSP --role contributor --scopes /subscriptions/<subscription_id>
+  ```
+- **b. Use Terraform to create an AKS cluster with autoscaling capabilities.**
+- **c. Configuration:**
+  - Modify the content in `.env.example` with your information.
+  - Rename the file to `.env`.
+
+### 3. Connect to the AKS Cluster
+Execute the following commands to connect to your newly created cluster:
+- **a. Connect to Azure account:**
+  ```bash
+  az login --use-device-code
+  ```
+- **b. Set the cluster subscription:**
+  ```bash
+  az account set --subscription <your_subscription_id>
+  ```
+- **c. Download cluster credentials:**
+  ```bash
+  az aks get-credentials --resource-group <resource_group_name> --name <cluster_name> --overwrite-existing
+
+### 4. Install and Configure Splunk Operator and ArgoCD
+Use Ansible to install and configure the necessary components:
+- **a. First Ansible playbook:**
+  - Installs Splunk Operator
+  - Installs ArgoCD on the Kubernetes cluster
+- **b. Second Ansible playbook:**
+  - Configures ArgoCD to track files in the GitHub repository.
+  - Applies changes to manage Splunk standalone instances.
+  **Note:** Modify the content in `.env.example` with your information and rename it to `.env`.
+
+### 5. Implement GitOps Workflow
+Follow these steps to implement and test the GitOps workflow:
+- **a. Forward the ArgoCD server port:**
+  ```bash
+  kubectl port-forward svc/argocd-server -n argocd 8080:443
+  ```
+- **b. Retrieve the ArgoCD admin password:**
+  ```bash
+  kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 --decode
+  ```
+- **c. Access the ArgoCD UI:**
+  - Open a web browser and go to [http://localhost:8080].
+  - Log in using the admin password obtained in the previous step.
+- **d. Verify initial setup:**
+  - Check that you have one standalone Splunk replica.
+
+  ![before_modification](https://github.com/user-attachments/assets/89f46652-8d3e-44cb-9822-fcc5f4aac433)
+
+- **e. Modify the configuration:**
+  - In your GitHub repository, locate the `splunk/standalone.yaml` file.
+  - Update the number of replicas.
+    
+![modif_reeplicas](https://github.com/user-attachments/assets/68b46c4c-60a4-42b0-a421-d1c66cf49c5b)
+
+- **f. Verify changes:**
+  - Check the ArgoCD UI to confirm that the new configuration has been applied.
+    
+ ![after_modif](https://github.com/user-attachments/assets/8ac47d4a-093c-4ccb-8604-8ad48c62f60e)
 
 
-3. **Install Splunk operator and ArgoCD and configuration ArgoCd using Ansible**
-   To authenticate and access the GitHub repository using the username and PAT (Personal Access Token)
-   we use  `kubernetes.core` collection to create and manage diffrenets objects in kubernetes like namespace
-   We use two Ansible playbooks in this project:
-   
-   - The **first playbook** installs the Splunk Operator and Argo CD on the Kubernetes cluster.
-   - The **second playbook** configures Argo CD to track files in the GitHub repository and apply any changes to the cluster. These changes 
-   involve managing Splunk standalone instances.
-  Note : modif the content .envexa;ple with your information and change name to .env
-
-Let's put our gitOIps in practice.
-
-
-First, let's forward the port using the following command:  
-```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-```
-and get password to our argocd instance by taping this command : 
-
-kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 --decode
-   
-Now, we can see in Argo CD that we have one standalone replica by visiting [http://localhost:8080]:
-
-![before_modification](https://github.com/user-attachments/assets/3f766e23-6317-40b9-a012-51fdd2ead615)
-
-Let's change the number of replicas for our standalone instance by modifying the configuration in our GitHub repository, which is tracked by Argo CD.
-
-In the `splunk/standalone.yaml` file, update the number of replicas.
-
-![modif_reeplicas](https://github.com/user-attachments/assets/da7be13d-5d48-4cc2-9e42-9bf6e0e51548)
-
-
-Now let's check the changes in Argo CD to see if the new configuration has been applied.
-
-![after_modif](https://github.com/user-attachments/assets/96d6dac6-bb50-49b2-988b-d5ef330550b7)
-
-Good.that is work we can chnage any parameter that we want i choose in this example replicas number
-
-
-
-
-
-
-
-
-
+## Conclusion
+You have successfully set up an Azure Kubernetes Service cluster using Terraform, implemented a GitOps workflow with ArgoCD, and deployed Splunk instances. This setup allows for easy management and scaling of your Kubernetes environment. You can now modify any parameter in your GitHub repository, and ArgoCD will automatically apply these changes to your cluster.
