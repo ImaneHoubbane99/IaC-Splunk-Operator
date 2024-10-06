@@ -17,9 +17,6 @@
 
 5. **Deploy an Auto-Scaling Kubernetes Cluster Using Terraform**  
    We use Terraform to deploy a Kubernetes cluster on Azure that is configured to autoscale based on resource demand.
-   notes: 
-    * use this command : sed -i 's/\r$//' run-terraform.sh to removes the carriage return characters from the script, fixing the ^M issue
-
 
 6. **Create an Ansible Docker Image with kubernetes.core**  
    An Ansible Docker image is built with the `kubernetes.core` collection. This image will be used to manage Kubernetes resources through Ansible playbooks.
@@ -34,11 +31,7 @@
    - The **second playbook** configures Argo CD to track files in the GitHub repository and apply any changes to the cluster. These changes 
    involve managing Splunk standalone instances.
 
-   Note : 
-   * if get a problem like : unable to connect to the server: dial tcp: lookup dns-rare-tiger-hlq5coj8.hcp.francecentral.azmk8s.io on 8.8.8.8:53: no such host
-   run these commands to set kubeconfig env variable: ls /mnt/c/Users/Imane\ Houbbane/.kube/config
-   export KUBECONFIG=/mnt/c/Users/Imane\ Houbbane/.kube/config
-
+Note : I run this on ubuntu
 
 
 First, let's forward the port using the following command:  
