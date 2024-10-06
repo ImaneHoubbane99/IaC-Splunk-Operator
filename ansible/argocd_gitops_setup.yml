@@ -4,13 +4,15 @@
   gather_facts: no
   vars:
     ARGOCD_SERVER_URL: "localhost:8080"
-    GIT_REPO_URL: "https://github.com/ImaneHoubbane99/Splunk-Configuration"
+    GIT_REPO_URL: "https://github.com/ImaneHoubbane99/splunk_configuration"
     ARGOCD_NAMESPACE: "argocd"
     REPO_PATH: "splunk"
     GIT_REPO_BRANCH: "main"
     DEST_NAMESPACE: "splunk-operator"
     ARGOCD_ADMIN_SECRET_NAME: "argocd-initial-admin-secret"
-    ARGOCD_APP: "Argocd-Standalones"
+    ARGOCD_APP: "argocd-standalones"
+    USERNAME: "{{ lookup('env', 'USERNAME') }}"
+    PAT: "{{ lookup('env', 'PAT') }}"
 
   tasks:
     - name: Port-forward Argo CD server to localhost:8080
@@ -23,7 +25,8 @@
     - name: Wait for port forwarding to take effect
       ansible.builtin.pause:
         seconds: 5
-    - name: Get GitHub PAT secret for Argo CD
+
+    - name: Create a secret for GitHub PAT in Kubernetes
       kubernetes.core.k8s:
         state: present
         definition:
@@ -33,7 +36,8 @@
             name: argocd-repo-creds
             namespace: "{{ ARGOCD_NAMESPACE }}"
           data:
-            secret.txt: "{{ lookup('file', 'secret.txt') | b64encode }}"
+            pat: "{{ PAT | b64encode }}"
+            username: "{{ USERNAME | b64encode }}"
       ignore_errors: yes
 
     - name: Get Argo CD admin password from Kubernetes secret
@@ -47,29 +51,32 @@
     - name: Decode the Argo CD admin password
       set_fact:
         ARGOCD_ADMIN_PASSWORD: "{{ argocd_admin_secret.resources[0].data.password | b64decode }}"
+      when: argocd_admin_secret.resources is defined and argocd_admin_secret.resources | length > 0
 
-    - name: Get GitHub credentials from the secret
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Secret
-        name: "argocd-repo-creds"
-        namespace: "{{ ARGOCD_NAMESPACE }}"
-      register: repo_creds
 
-    - name: Decode the secret.txt content
-      set_fact:
-        decoded_secret: "{{ repo_creds.resources[0].data['secret.txt'] | b64decode }}"
+    - name: Create Argo CD Repository resource
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "repo-{{ GIT_REPO_URL | split('/') | last | replace('.', '-') }}"
+            namespace: "{{ ARGOCD_NAMESPACE }}"
+            labels:
+              argocd.argoproj.io/secret-type: repository
+          stringData:
+            type: git
+            url: "{{ GIT_REPO_URL }}"
+            username: "{{ USERNAME }}"
+            password: "{{ PAT }}"
+      register: repo_result
+      ignore_errors: yes
 
-    - name: Parse the decodedsecret and set facts for USERNAME and PAT
-      set_fact:
-        USERNAME: "{{ decoded_secret.splitlines()[0].split('=')[1] }}"
-        PAT: "{{ decoded_secret.splitlines()[1].split('=')[1] }}"
-
-    - name: Debug the extracted USERNAME and PAT
+    - name: Debug Repository creation
       debug:
-        msg:
-          - "USERNAME: {{ USERNAME }}"
-          - "PAT: {{ PAT }}"
+        var: repo_result
+      when: repo_result is defined
 
     - name: Create an Argo CD Application
       kubernetes.core.k8s:
@@ -81,30 +88,63 @@
             name: "{{ ARGOCD_APP }}"
             namespace: "{{ ARGOCD_NAMESPACE }}"
           spec:
-            project: default  
+            project: default
             source:
               repoURL: "{{ GIT_REPO_URL }}"
-              path: "{{ REPO_PATH }}"
               targetRevision: "{{ GIT_REPO_BRANCH }}"
+              path: "{{ REPO_PATH }}"
             destination:
               server: https://kubernetes.default.svc
               namespace: "{{ DEST_NAMESPACE }}"
             syncPolicy:
-              retry:
-                backoff:
-                  duration: 30s
+              automated:
+                prune: false
+                selfHeal: false
+              syncOptions:
+                - CreateNamespace=true
+      register: app_creation_result
+      ignore_errors: yes
 
-    - name: Sync the Argo CD Application
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: argoproj.io/v1alpha1
-          kind: Application
-          metadata:
-            name: "{{ ARGOCD_APP }}"
-            namespace: "{{ ARGOCD_NAMESPACE }}"
-          spec:
-            sync:
-              policy:
-                syncOptions:
-                  - SyncPolicy: Automated
+    - name: Debug Application creation
+      debug:
+        var: app_creation_result
+      when: app_creation_result is defined
+
+    - name: Force refresh the Argo CD Application
+      ansible.builtin.command:
+        cmd: argocd app get {{ ARGOCD_APP }} --refresh
+      environment:
+        ARGOCD_SERVER: "{{ ARGOCD_SERVER_URL }}"
+        ARGOCD_AUTH_TOKEN: "{{ lookup('env', 'ARGOCD_AUTH_TOKEN') }}"
+      register: refresh_result
+      ignore_errors: yes
+
+    - name: Debug Application refresh
+      debug:
+        var: refresh_result
+      when: refresh_result is defined
+
+    - name: Check Argo CD Application status
+      ansible.builtin.command:
+        cmd: argocd app get {{ ARGOCD_APP }}
+      environment:
+        ARGOCD_SERVER: "{{ ARGOCD_SERVER_URL }}"
+        ARGOCD_AUTH_TOKEN: "{{ lookup('env', 'ARGOCD_AUTH_TOKEN') }}"
+      register: app_status
+      ignore_errors: yes
+
+    - name: Display application status
+      debug:
+        var: app_status.stdout_lines
+      when: app_status is defined and app_status.stdout_lines is defined
+
+    - name: Get Argo CD application controller logs
+      ansible.builtin.command:
+        cmd: kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller --tail=100
+      register: argocd_logs
+      ignore_errors: yes
+
+    - name: Display Argo CD logs
+      debug:
+        var: argocd_logs.stdout_lines
+      when: argocd_logs is defined and argocd_logs.stdout_lines is defined
