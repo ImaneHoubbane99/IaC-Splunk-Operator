@@ -1,0 +1,28 @@
+# Ignore .tfvars files in all directories
+**/*.tfvars
+
+# Ignore .env files in all directories
+**/.env
+
+# Ignore .terraform directories in all directories
+**/.terraform/
+
+# Ignore .terraform.lock.hcl files in all directories
+**/.terraform.lock.hcl
+
+# Ignore terraform.tfstate files in all directories
+**/terraform.tfstate
+
+# Ignore terraform.tfstate.backup files in all directories
+**/terraform.tfstate.backup
+
+
+# Ignore provider binaries
+**/terraform-provider-*
+
+# Ignore secret file 
+
+**/*.txt
+
+# Ignore specific LICENSE.txt files and similar ones
+terraform/registry.terraform.io/**/*.txt

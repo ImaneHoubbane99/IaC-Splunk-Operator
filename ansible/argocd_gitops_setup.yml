@@ -1,0 +1,110 @@
+---
+- name: Argo CD GitOps Playbook
+  hosts: localhost
+  gather_facts: no
+  vars:
+    ARGOCD_SERVER_URL: "localhost:8080"
+    GIT_REPO_URL: "https://github.com/ImaneHoubbane99/Splunk-Configuration"
+    ARGOCD_NAMESPACE: "argocd"
+    REPO_PATH: "splunk"
+    GIT_REPO_BRANCH: "main"
+    DEST_NAMESPACE: "splunk-operator"
+    ARGOCD_ADMIN_SECRET_NAME: "argocd-initial-admin-secret"
+    ARGOCD_APP: "Argocd-Standalones"
+
+  tasks:
+    - name: Port-forward Argo CD server to localhost:8080
+      ansible.builtin.shell: |
+        kubectl port-forward svc/argocd-server -n argocd 8080:443 > /dev/null 2>&1 &
+      async: 5
+      poll: 0
+      register: port_forward_job
+
+    - name: Wait for port forwarding to take effect
+      ansible.builtin.pause:
+        seconds: 5
+    - name: Get GitHub PAT secret for Argo CD
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: argocd-repo-creds
+            namespace: "{{ ARGOCD_NAMESPACE }}"
+          data:
+            secret.txt: "{{ lookup('file', 'secret.txt') | b64encode }}"
+      ignore_errors: yes
+
+    - name: Get Argo CD admin password from Kubernetes secret
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: "{{ ARGOCD_ADMIN_SECRET_NAME }}"
+        namespace: "{{ ARGOCD_NAMESPACE }}"
+      register: argocd_admin_secret
+
+    - name: Decode the Argo CD admin password
+      set_fact:
+        ARGOCD_ADMIN_PASSWORD: "{{ argocd_admin_secret.resources[0].data.password | b64decode }}"
+
+    - name: Get GitHub credentials from the secret
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: "argocd-repo-creds"
+        namespace: "{{ ARGOCD_NAMESPACE }}"
+      register: repo_creds
+
+    - name: Decode the secret.txt content
+      set_fact:
+        decoded_secret: "{{ repo_creds.resources[0].data['secret.txt'] | b64decode }}"
+
+    - name: Parse the decodedsecret and set facts for USERNAME and PAT
+      set_fact:
+        USERNAME: "{{ decoded_secret.splitlines()[0].split('=')[1] }}"
+        PAT: "{{ decoded_secret.splitlines()[1].split('=')[1] }}"
+
+    - name: Debug the extracted USERNAME and PAT
+      debug:
+        msg:
+          - "USERNAME: {{ USERNAME }}"
+          - "PAT: {{ PAT }}"
+
+    - name: Create an Argo CD Application
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: "{{ ARGOCD_APP }}"
+            namespace: "{{ ARGOCD_NAMESPACE }}"
+          spec:
+            project: default  
+            source:
+              repoURL: "{{ GIT_REPO_URL }}"
+              path: "{{ REPO_PATH }}"
+              targetRevision: "{{ GIT_REPO_BRANCH }}"
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: "{{ DEST_NAMESPACE }}"
+            syncPolicy:
+              retry:
+                backoff:
+                  duration: 30s
+
+    - name: Sync the Argo CD Application
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: "{{ ARGOCD_APP }}"
+            namespace: "{{ ARGOCD_NAMESPACE }}"
+          spec:
+            sync:
+              policy:
+                syncOptions:
+                  - SyncPolicy: Automated

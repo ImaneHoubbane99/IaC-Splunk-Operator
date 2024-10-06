@@ -1,0 +1,64 @@
+- name: Check Kubernetes Cluster Availability
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Check if Kubernetes is up and API is reachable
+      kubernetes.core.k8s_info:
+        kubeconfig: "/root/.kube/config"
+        kind: Namespace
+        name: default
+      register: cluster_check
+      ignore_errors: true
+
+    - name: Fail if Kubernetes is not reachable
+      ansible.builtin.fail:
+        msg: "Error: Kubernetes cluster is not running or unreachable."
+      when: cluster_check is failed
+
+- name: Install Argo CD and Splunk Operator on AKS
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Create Namespace for Argo CD
+      kubernetes.core.k8s:
+        kubeconfig: "/root/.kube/config"
+        state: present
+        kind: Namespace
+        name: argocd
+
+    - name: Wait for Namespace to be available
+      kubernetes.core.k8s_info:
+        kubeconfig: "/root/.kube/config"
+        kind: Namespace
+        name: argocd
+      register: ns
+      until: ns.resources[0].status.phase == 'Active'
+      retries: 10
+      delay: 6  # Delay for 6 seconds between retries
+
+    - name: Deploy Argo CD
+      kubernetes.core.k8s:
+        kubeconfig: "/root/.kube/config"
+        state: present
+        namespace: argocd
+        definition: "{{ lookup('url', 'https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml', split_lines=False) }}"
+
+
+
+
+- name: Apply Kubernetes Configuration with Ansible
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Download Splunk Operator Manifest
+      ansible.builtin.get_url:
+        url: "https://github.com/splunk/splunk-operator/releases/download/2.6.1/splunk-operator-cluster.yaml"
+        dest: "/tmp/splunk-operator-cluster.yaml"
+
+    - name: Apply Splunk Operator Configuration
+      kubernetes.core.k8s:
+        kubeconfig: "/root/.kube/config"
+        state: present
+        src: "/tmp/splunk-operator-cluster.yaml"
+
+
