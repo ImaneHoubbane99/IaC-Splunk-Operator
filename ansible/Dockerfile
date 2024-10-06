@@ -13,5 +13,5 @@ COPY argocd_gitops_setup.yml ./
 COPY install_argocd_splunk_operator.yml ./
 
 # Command to execute the playbook
-CMD ["ansible-playbook"]
+ENTRYPOINT ["ansible-playbook"]
 
