@@ -4,6 +4,11 @@
 ## Overview
 This guide outlines the steps to set up an Azure Kubernetes Service (AKS) cluster using Terraform, implement GitOps practices with ArgoCD, and deploy Splunk instances. The process involves using various tools and technologies to create a robust, scalable, and manageable Kubernetes environment.
 
+## Architecture
+
+![gitops_architecture](https://github.com/user-attachments/assets/32acfde7-7a68-491d-99a5-37a4c63a79ac)
+
+
 ## Prerequisites
 - Azure subscription
 - GitHub account
